@@ -24,6 +24,7 @@ opencv-python
 pyttsx3
 pygame
 Pillow
+django_extensions
 ```
 
 Ensure you have these packages installed. To create a `requirements.txt` file, run:
@@ -65,10 +66,10 @@ This will list all the installed packages in your environment.
 5. Run the development server:
 
    ```bash
-   python manage.py runserver
+   python manage.py runserver_plus --cert-file cert.pem --key-file key.pem IP_ADDRESS:8080
    ```
 
-6. Access the client application at `http://127.0.0.1:8000/monitoring/`.
+6. Access the client application at `https://IP_ADDRESS:8000/monitoring/`.
 
 ## Usage
 
