@@ -19,6 +19,5 @@ from django.urls import path, include
 
 urlpatterns = [
     path('monitoring/', include('monitoring.urls')),
-
 ]
 

@@ -1,12 +1,66 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>CCTV Monitoring System</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Camera Feed</title>
 </head>
 <body>
-    <h1>CCTV Monitoring System</h1>
-    <div>
-        <img src="/monitoring/video_feed/" alt="Video Feed" style="width: 25%; height: 25%;">
-    </div>
+    <h1>Live Camera Feed</h1>
+    <video id="video" autoplay playsinline style="width: 80%; max-width: 600px;"></video>
+    <script>
+        // Access the client's camera
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function (stream) {
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+            })
+            .catch(function (error) {
+                console.error("Error accessing the camera: ", error);
+            });
+
+        // Capture and send frames to the backend
+        const video = document.getElementById('video');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        const sendFrameToServer = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Convert frame to base64 and send to the server
+            const frame = canvas.toDataURL('image/jpeg');
+            fetch('/monitoring/process_frame/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'), // Include CSRF token
+                },
+                body: JSON.stringify({ frame: frame }),
+            }).then(response => response.json())
+              .then(data => console.log(data))
+              .catch(error => console.error('Error:', error));
+        };
+
+        // Send frames every 100ms
+        setInterval(sendFrameToServer, 100);
+
+        // Function to get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.startsWith(name + '=')) {
+                        cookieValue = cookie.substring(name.length + 1);
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
 </body>
 </html>

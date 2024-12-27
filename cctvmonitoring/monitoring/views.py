@@ -8,14 +8,24 @@ import face_recognition as fr
 import numpy as np
 import os
 import pygame
-from time import sleep
+import time
 import pyttsx3
 from django.shortcuts import render
 
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+import base64
+import cv2
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+
+import threading
 
 def index(request):
     return render(request, 'monitoring/index.html')
-
 
 # Initialize face encoding data
 faces = {}
@@ -23,18 +33,109 @@ encoded_faces = []
 faces_name = []
 
 # Initialize pyttsx3 engine
-engine = pyttsx3.init()
+dic = {}
+
+@csrf_exempt  # Disable CSRF for simplicity (enable CSRF in production)
+def process_frame(request):
+    if request.method == "POST":
+        try:
+            # Get the frame from the request
+            data = json.loads(request.body)
+            frame_data = data.get("frame")
+
+            if not frame_data:
+                return JsonResponse({"error": "No frame data received"}, status=400)
+
+            # Decode the Base64-encoded frame
+            frame_data = base64.b64decode(frame_data.split(",")[1])
+            np_frame = np.frombuffer(frame_data, np.uint8)
+            frame = cv2.imdecode(np_frame, cv2.IMREAD_COLOR)
+
+            face_locations = fr.face_locations(frame)
+            unknown_face_encodings = fr.face_encodings(frame, face_locations)
+            for face_encoding in unknown_face_encodings:
+                matches = fr.compare_faces(encoded_faces, face_encoding)
+                name = "Regular Citizen"
+                face_distances = fr.face_distance(encoded_faces, face_encoding)
+                best_match_index = np.argmin(face_distances)
+                print(face_distances[best_match_index])
+                if face_distances[best_match_index] < 0.5:
+                    if matches[best_match_index]:
+                        name = faces_name[best_match_index]
+
+                if name != "Regular Citizen":
+                    if name in dic and int(time.time()) - int(dic[name]) < 60:
+                        print("Current Time" + str(time.time()) + "Previous Time" + str(dic[name]))
+                    else:
+                        current_unix_time = int(time.time())
+                        dic[name] = current_unix_time
+                        play_music_in_thread("beep-warning.mp3")
+                        mail(name)
+                        speak_in_thread(
+                            f"Known Offender named {name} came into the premises of our ATM, be vigilant!!!", "male")
+                        # Wait to let the music play a bit before exiting
+
+
+            return JsonResponse({"status": "Frame processed successfully"})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
+def play_music_in_thread(file):
+    t = threading.Thread(target=play_music, args=(file,))
+    t.start()
 
 # Function to play background music
 def play_music(file):
     pygame.mixer.init()
     pygame.mixer.music.load(file)
     pygame.mixer.music.set_volume(0.7)
-    #pygame.mixer.music.play(-1)  # Loop the music
+    pygame.mixer.music.play(-1)  # Loop the music
+    time.sleep(5)
+    pygame.mixer.music.stop()
+
+def mail(name):
+    # Email details
+    sender_email = "chandanamvamsik@gmail.com"
+    app_password = "fobrxlzhrllpklgc"  # Use the generated app password
+    recipient_email = "krishnavamsi1225@gmail.com"
+    subject = "Alert!! Known Offender entered ATM premises"
+    body = f"Known Offender {name} enterred ATM premises. Be vigilant!!"
+
+    # Create the email
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = recipient_email
+    message["Subject"] = subject
+    message.attach(MIMEText(body, "plain"))
+
+    # SMTP server configuration
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+
+    try:
+        # Connect to Gmail's SMTP server
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()  # Start TLS encryption
+        server.login(sender_email, app_password)  # Authenticate with the app password
+
+        # Send the email
+        server.sendmail(sender_email, recipient_email, message.as_string())
+        print("Email sent successfully!")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        server.quit()
+
+def speak_in_thread(text,person):
+    t = threading.Thread(target=speak_text, args=(text,person))
+    t.start()
 
 # Function to speak text
 def speak_text(text,person):
     # Get available voices
+    engine = pyttsx3.init()
     voices = engine.getProperty('voices')
 
     if person == "female":
@@ -50,7 +151,7 @@ def speak_text(text,person):
     engine.runAndWait()
 
 def encode_faces():
-    for dirpath, dnames, fnames in os.walk("./criminal_records"):
+    for dirpath, dnames, fnames in os.walk("criminal_records"):
         for f in fnames:
             print(f)
             if f.endswith(".jpg") or f.endswith(".png"):
@@ -66,41 +167,3 @@ def encode_faces():
     if not encoded_faces:
         print("No Faces were encoded. Ensure there is data in criminal_records folder.")
     faces_name = list(faces.keys())
-
-def video_stream():
-    video_capture = cv2.VideoCapture(0)
-    while True:
-        ret, frame = video_capture.read()
-        if not ret:
-            break
-        face_locations = fr.face_locations(frame)
-        unknown_face_encodings = fr.face_encodings(frame, face_locations)
-        for face_encoding in unknown_face_encodings:
-            matches = fr.compare_faces(encoded_faces, face_encoding)
-            name = "Regular Citizen"
-            face_distances = fr.face_distance(encoded_faces, face_encoding)
-            best_match_index = np.argmin(face_distances)
-            print(face_distances[best_match_index])
-            if face_distances[best_match_index] < 0.5:
-                if matches[best_match_index]:
-                    name = faces_name[best_match_index]
-
-            if name != "Regular Citizen":
-                play_music("beep-warning.mp3")
-                speak_text(f"Known Offender named {name} came into the premises of our ATM, be vigilant!!!", "male")
-                # Wait to let the music play a bit before exiting
-                sleep(5)
-                pygame.mixer.music.stop()
-
-            # Overlay name
-            for (top, right, bottom, left) in face_locations:
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                cv2.putText(frame, name, (left, bottom + 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        _, jpeg = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-
-def video_feed(request):
-    encode_faces()
-    return StreamingHttpResponse(video_stream(),
-                                 content_type='multipart/x-mixed-replace; boundary=frame')
