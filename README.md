@@ -25,6 +25,7 @@ pyttsx3
 pygame
 Pillow
 django_extensions
+pyopenssl
 ```
 
 Ensure you have these packages installed. To create a `requirements.txt` file, run:
@@ -70,6 +71,10 @@ This will list all the installed packages in your environment.
    ```
 
 6. Access the client application at `https://IP_ADDRESS:8000/monitoring/`.
+
+## Usage
+
+- Follow any standard guide for creation of cert.pem and key.pem files
 
 ## Usage
 
